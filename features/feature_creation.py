@@ -13,15 +13,7 @@ from takingsamples import *
 from merchant_features import *
 from coupon_features import *
 from utils import *
-
-def createFeatureMatrix(samples, expected_date_tup):
-    user_feature_mat = create_user_feature_matrix(expected_date_tup, samples)
-    merchant_feature_mat = create_merchant_feature_matrix(expected_date_tup, samples)
-    coupon_feature_mat = create_coupon_feature_matrix(expected_date_tup, samples)
-
-    feature_mat = np.column_stack((user_feature_mat, merchant_feature_mat, coupon_feature_mat))    
-    return feature_mat
-
+from sklearn import preprocessing
 
 def createFeatureMatrixEx(samples, on_off):
     coupon_feature_mat = create_coupon_feature_matrix_ex(samples, on_off)
@@ -29,10 +21,12 @@ def createFeatureMatrixEx(samples, on_off):
     user_feature_mat = create_user_feature_matrix_ex(samples, on_off)
     
     feature_mat = np.column_stack((coupon_feature_mat, merchant_feature_mat, user_feature_mat))
-    print("Coupon matrix ", coupon_feature_mat.shape, " Merchant matrix ", merchant_feature_mat.shape, " User matrix ", user_feature_mat.shape)
-    print("%s Total " % (getCurrentTime()), feature_mat.shape)
-    return feature_mat
+    print(getCurrentTime(),"Coupon matrix ", coupon_feature_mat.shape, \
+          " Merchant matrix ", merchant_feature_mat.shape, " User matrix ", user_feature_mat.shape)
 
+    print("%s Total " % (getCurrentTime()), feature_mat.shape)
+    feature_mat = preprocessing.scale(feature_mat)
+    return feature_mat
 
 
 if __name__ == '__main__':

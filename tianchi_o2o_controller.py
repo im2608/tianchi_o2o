@@ -71,7 +71,7 @@ for each_slide_win in slide_windows:
                 break
             if (len(runningSubProcesses) == 0):
                 break
-
+ 
 while True:
     start_from_user_cnt = waitSubprocesses(runningSubProcesses)
     if (start_from_user_cnt[0] is not None and start_from_user_cnt[1] is not None):
@@ -83,32 +83,38 @@ forecasted_user_item_prob = dict()
 
 prediction_by_subporcess = {}
 
+str_today = datetime2Str(datetime.date.today())
+
 for each_slide_win in slide_windows:
-    train_win_start= each_slide_win[0]
-    train_win_end = each_slide_win[1]
+    train_win_start= datetime2Str(each_slide_win[0])
+    train_win_end = datetime2Str(each_slide_win[1])
     file_idx = 0
-    output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, datetime.date.today(), file_idx)
+    output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, str_today, file_idx)
     
     # 找到 file_index 最大的文件
     while (os.path.exists(output_file_name)):
         file_idx += 1
-        output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, datetime.date.today(), file_idx)
+        output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, str_today, file_idx)
 
     file_idx -= 1
-    output_file_name = output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, datetime.date.today(), file_idx)
+    output_file_name = output_filename_fmt % (runningPath, train_win_start, train_win_end, str_today, file_idx)
     if (not os.path.exists(output_file_name)):
         print("WARNNING: output file does not exist! %s" % output_file_name)
         continue
 
-    print("reading (%d, %d), %s" % (train_win_start, train_win_end, output_file_name))
+    print("reading (%s, %s), %s" % (train_win_start, train_win_end, output_file_name))
     filehandle = open(output_file_name, encoding="utf-8", mode='r')
     csv_reader = csv.reader(filehandle)
 
-    for aline in csv_reader:
+    index = 0
+    for i, aline in enumerate(csv_reader):
+        if (i == 0):
+            continue
+
         user_id       = aline[0]
         c_id          = aline[1]
         date_received = aline[2]
-        fcst_proba    = aline[3]
+        fcst_proba    = float(aline[3])
         
         fcst_tup = (user_id, c_id, date_received)
         if (fcst_tup not in prediction_by_subporcess):
@@ -118,26 +124,24 @@ for each_slide_win in slide_windows:
 
 
 file_idx = 0
-output_file_name = "%s\\..\\output\\forecast.%s.%d.csv" % (runningPath, datetime.date.today(), file_idx)
+output_file_name = "%s\\..\\output\\forecast.%s.%d.csv" % (runningPath, str_today, file_idx)
 
 while (os.path.exists(output_file_name)):
     file_idx += 1
-    output_file_name = "%s\\..\\output\\forecast.%s.%d.csv" % (runningPath, datetime.date.today(), file_idx)
+    output_file_name = "%s\\..\\output\\forecast.%s.%d.csv" % (runningPath, str_today, file_idx)
 
 print("output forecast file %s" % output_file_name)
 outputFile = open(output_file_name, encoding="utf-8", mode='w')
 outputFile.write("User_id,Coupon_id,Date_received,Probability\n")
 
 for fcst_tup, proba_by_subprocess in prediction_by_subporcess.items():
-    user_id       = aline[0]
-    c_id          = aline[1]
-    date_received = aline[2]
-    fcst_proba = round(np.mean(proba_by_subprocess), 2)
-    outputFile.write("%s,%s,%d%02d%02d,%.2f\n" % \
-                     (user_id, c_id, date_received.year, date_received.month, date_received.day, fcst_proba))
-    
-    
-    outputFile.close()
+    user_id       = fcst_tup[0]
+    c_id          = fcst_tup[1]
+    date_received = fcst_tup[2]
+    fcst_proba = np.mean(proba_by_subprocess)
+    outputFile.write("%s,%s,%s,%s\n" % (user_id, c_id, date_received, str(fcst_proba)))
 
 
-print("Done!")
+outputFile.close()
+
+print("%s Done!" % (getCurrentTime()))

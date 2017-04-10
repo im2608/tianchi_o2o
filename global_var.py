@@ -27,4 +27,4 @@ g_feature_values = dict()
 runningPath = sys.path[0]
 sys.path.append("%s\\features\\" % runningPath)
 
-output_filename_fmt = "%s\\..\\output\\subdata\forecast.(%s.%s).%s.%d.csv"
+output_filename_fmt = r"%s\..\output\subdata\forecast.(%s.%s).%s.%d.csv"

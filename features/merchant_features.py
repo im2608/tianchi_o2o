@@ -136,6 +136,12 @@ def create_merchant_feature_values(expected_date_tup, samples, users_on_off):
     sample_cnt = len(samples)
     
     calculated_merchant_set = set()
+    
+    # 取得用户的哪些数据
+    if (users_on_off == BOTH):
+        being_caled_on_off = [ONLINE, OFFLINE]
+    else:
+        being_caled_on_off = [users_on_off]
 
     # 统计各个特征
     for index in range(sample_cnt):
@@ -155,25 +161,23 @@ def create_merchant_feature_values(expected_date_tup, samples, users_on_off):
         if (m_id not in g_merchant_user_dict):
             continue
 
-        for on_off in g_merchant_user_dict[m_id].keys():
-            if (users_on_off != BOTH and on_off != users_on_off):
-                continue
-
+        for on_off in being_caled_on_off:
             on_off_data_dict = g_merchant_user_dict[m_id][on_off]
             for user_id in on_off_data_dict.keys():
                 for opt_tuple, tuple_cnt in on_off_data_dict[user_id].items(): 
-                    
+
                     # 商家的优惠券被领取和使用的次数,两者之间的天数, 最大/最小天数, 在该商家使用优惠券的用户列表
                     feature_merchant_coupon_cnt(m_id, user_id, merchant_coupon_cnt_dict, expected_date_tup, opt_tuple, tuple_cnt, on_off)
-                    
+
                     # 商家发放的 【0， 50】， 【51， 200】，【201， 500】， >500 的优惠券 的领取次数以及使用次数 
                     # 商家发放的各个折扣率领取的次数以及使用次数  <=0.5, (0.5, 0.7], (0.7, 0.9], > 0.9
                     feature_merchant_coupon_discount(m_id, merchant_coupon_discount_dict, expected_date_tup, opt_tuple, tuple_cnt, on_off)
-                    
-                    if (on_off == OFFLINE):
-                        feature_merchant_distance_date_diff(m_id, merchant_distance_dict, expected_date_tup, opt_tuple, tuple_cnt)
+
+                    if (on_off == ONLINE):
+                        feature_merchant_online_opt_cnt(m_id, merchant_online_opt_dict, expected_date_tup, opt_tuple, tuple_cnt)                        
                     else:
-                        feature_merchant_online_opt_cnt(m_id, merchant_online_opt_dict, expected_date_tup, opt_tuple, tuple_cnt)
+                        feature_merchant_distance_date_diff(m_id, merchant_distance_dict, expected_date_tup, opt_tuple, tuple_cnt)
+
         if (index % 10000 == 0):
             print("calculating Merchant feature matrix, %d / %d handled\r" % (index, sample_cnt), end="")
     
@@ -187,6 +191,7 @@ def create_merchant_features_online_matrix(samples):
     merchant_feature_value_dict = dict()
 
    # 特征矩阵
+    feature_cnt = 6
     feature_idx = 0
     sample_cnt = len(samples)
     for index in range(sample_cnt):
@@ -199,13 +204,13 @@ def create_merchant_features_online_matrix(samples):
 
             merchant_feature_matrix[index] = merchant_feature_value_dict[m_id]
             continue
-        
+
         if (m_id not in g_merchant_user_dict or 
             m_id not in merchant_online_opt_dict):
             continue
 
         feature_idx = 0
-        
+
         totoal_opt_cnt = sum(merchant_online_opt_dict[m_id]) + 1
 
         # 商家的操作次数, 以及所占的比例
@@ -216,11 +221,14 @@ def create_merchant_features_online_matrix(samples):
         merchant_feature_matrix[index, feature_idx] = merchant_online_opt_dict[m_id][0] / totoal_opt_cnt; feature_idx += 1
         merchant_feature_matrix[index, feature_idx] = merchant_online_opt_dict[m_id][1] / totoal_opt_cnt; feature_idx += 1
         merchant_feature_matrix[index, feature_idx] = merchant_online_opt_dict[m_id][2] / totoal_opt_cnt; feature_idx += 1
-        
+
         merchant_feature_value_dict[m_id] = merchant_feature_matrix[index]
 
-    print("%s Merchant ONLINE feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_idx))
-    return merchant_feature_matrix[:, 0:feature_idx]    
+        if (feature_cnt != feature_idx):
+            feature_cnt = feature_cnt
+
+    print("%s Merchant ONLINE feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_cnt))
+    return merchant_feature_matrix[:, 0:feature_cnt]    
 
 
 
@@ -231,7 +239,8 @@ def create_merchant_features_offline_matrix(samples):
     
     merchant_feature_value_dict = dict()
 
-   # 特征矩阵
+    # 特征矩阵
+    feature_cnt = 3
     feature_idx = 0
     sample_cnt = len(samples)
     for index in range(sample_cnt):
@@ -258,8 +267,11 @@ def create_merchant_features_offline_matrix(samples):
         
         merchant_feature_value_dict[m_id] = merchant_feature_matrix[index]
         
-    print("%s Merchant OFFLINE feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_idx))
-    return merchant_feature_matrix[:, 0:feature_idx]    
+        if (feature_cnt != feature_idx):
+            feature_cnt = feature_cnt
+
+    print("%s Merchant OFFLINE feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_cnt))
+    return merchant_feature_matrix[:, 0:feature_cnt]    
 
 # (action,   c_id, discount_rate, min_charge, date_received, date, date_diff)
 # (distance, c_id, discount_rate, min_charge, date_received, date, date_diff)
@@ -273,7 +285,7 @@ def create_merchant_feature_on_off_matrix(samples, on_off):
     merchant_feature_value_dict = dict()
 
     # 特征矩阵
-    feature_idx = 0
+    feature_cnt = 30
     sample_cnt = len(samples)
     for index in range(sample_cnt):
         user_id = samples[index][0]
@@ -285,49 +297,53 @@ def create_merchant_feature_on_off_matrix(samples, on_off):
 
             merchant_feature_matrix[index] = merchant_feature_value_dict[m_id]
             continue
-        
+
         if (m_id not in g_merchant_user_dict):
             continue
 
         feature_idx = 0
+        
+        if (m_id not in merchant_coupon_cnt_dict):
+            continue
 
         # 商家的优惠券被领取和使用的次数,两者之间的平均天数, 最大/最小天数, 用户在该商家平均使用的优惠券数量
-        if (m_id in merchant_coupon_cnt_dict and on_off in merchant_coupon_cnt_dict[m_id]):
-            merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][0]; feature_idx += 1
-            merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][1]; feature_idx += 1
-            merchant_feature_matrix[index, feature_idx] =  sum(merchant_coupon_cnt_dict[m_id][on_off][2])/\
-                                                           (len(merchant_coupon_cnt_dict[m_id][on_off][2]) + 1); feature_idx += 1
-            merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][3]; feature_idx += 1
-            merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][4]; feature_idx += 1
-            merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][1]/ \
-                                                           (len(merchant_coupon_cnt_dict[m_id][on_off][5]) + 1); feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][0]; feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][1]; feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  sum(merchant_coupon_cnt_dict[m_id][on_off][2])/\
+                                                       (len(merchant_coupon_cnt_dict[m_id][on_off][2]) + 1); feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][3]; feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][4]; feature_idx += 1
+        merchant_feature_matrix[index, feature_idx] =  merchant_coupon_cnt_dict[m_id][on_off][1]/ \
+                                                       (len(merchant_coupon_cnt_dict[m_id][on_off][5]) + 1); feature_idx += 1
 
         # 商家发放的 【0， 50】， 【51， 200】，【201， 500】， >500 的优惠券 的领取次数以及使用次数 ,
         # 商家发放的各个折扣率领取的次数以及使用次数  <=0.5, (0.5, 0.7], (0.7, 0.9], > 0.9
         # 使用次数与领取次数的比值
         # min chagre 领取次数
-        if (m_id in merchant_coupon_discount_dict and on_off in merchant_coupon_discount_dict[m_id]):
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][0]; feature_idx += 4
-            # 使用次数
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][1]; feature_idx += 4
-            # 使用次数占领取的比例 
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  \
-                merchant_coupon_discount_dict[m_id][ONLINE][1] / (merchant_coupon_discount_dict[m_id][on_off][1] + 1); feature_idx += 4
-            # discount rate 领取次数
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][2]; feature_idx += 4
-            # 使用次数
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][3]; feature_idx += 4
-            # 使用次数占领取的比例
-            merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  \
-                merchant_coupon_discount_dict[m_id][ONLINE][3] / (merchant_coupon_discount_dict[m_id][on_off][2] + 1); feature_idx += 4
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][0]; feature_idx += 4
+        # 使用次数
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][1]; feature_idx += 4
+        # 使用次数占领取的比例 
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  \
+            merchant_coupon_discount_dict[m_id][ONLINE][1] / (merchant_coupon_discount_dict[m_id][on_off][1] + 1); feature_idx += 4
+        # discount rate 领取次数
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][2]; feature_idx += 4
+        # 使用次数
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  merchant_coupon_discount_dict[m_id][on_off][3]; feature_idx += 4
+        # 使用次数占领取的比例
+        merchant_feature_matrix[index, feature_idx : feature_idx + 4] =  \
+            merchant_coupon_discount_dict[m_id][ONLINE][3] / (merchant_coupon_discount_dict[m_id][on_off][2] + 1); feature_idx += 4
+                           
+        if (feature_cnt != feature_idx):
+            feature_cnt = feature_cnt
 
         merchant_feature_value_dict[m_id] = merchant_feature_matrix[index]
 
         if (index % 1000 == 0):
             print("%s creating Merchant feature matrix, %d / %d handled\r"  % (getCurrentTime(), index, sample_cnt), end="") 
   
-    print("%s Merchant ON/OFF feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_idx))
-    return merchant_feature_matrix[:, 0:feature_idx]    
+    print("%s Merchant ON/OFF feature matrix (%d, %d)" % (getCurrentTime(), sample_cnt, feature_cnt))
+    return merchant_feature_matrix[:, 0:feature_cnt]    
 
 # (action,   c_id, discount_rate, min_charge, date_received, date, date_diff)
 # (distance, c_id, discount_rate, min_charge, date_received, date, date_diff)

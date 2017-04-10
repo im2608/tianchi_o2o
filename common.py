@@ -11,7 +11,6 @@ import time
 import numpy as np
 from greenlet import getcurrent
 from utils import *
-from tianchi_o2o import date_received
 
 def load_users(file_name, start_from, user_cnt, on_off):
     user_file_handle = open(r"%s\..\data\%s" % (runningPath, file_name), encoding="utf-8", mode='r')
@@ -30,15 +29,15 @@ def load_users(file_name, start_from, user_cnt, on_off):
     return
 
 def should_read_data(date_received, date, date_diff, slide_win):
-    # 如果是由contorller启动， 则判断日期是否在slide window 中
+    # 如果是由contorller启动， 则slide_win不为空， 需判断日期是否在slide window 中
     if (slide_win is not None):
 
         # 如果是使用优惠券，则判断date 是否在[fcst_start, fcst_end)中
         if (date_diff is not None and (date >= slide_win[2] and date < slide_win[3])):
             return True
-        
+
         # 如果购买没有使用优惠券，则判断date是否在[train_start, train_end) 中
-        if (date_diff is None and date is not None and (date >= slide_win[0] and date >= slide_win[1])):
+        if (date_diff is None and date is not None and (date >= slide_win[0] and date < slide_win[1])):
             return True
 
         # date 为空则用date_received判断 是否在[train_start, train_end) 中
@@ -49,12 +48,15 @@ def should_read_data(date_received, date, date_diff, slide_win):
 
     return True
 
-def load_ONLINE_data(slide_win):
-    online_file = r"%s\..\data\pre_processed_ccf_online_stage1_train.csv" % (runningPath)
-#     online_file = r"%s\..\data\pre_processed_online_with_offline_coupon.csv" % (runningPath)
-#     online_file = r"%s\..\data\part_ccf_online_stage1_train.csv" % (runningPath)
-    print("%s loading ONLINE data %s" % (getCurrentTime(), online_file))    
-    online_file = open(online_file, encoding="utf-8", mode='r')
+def load_ONLINE_data(slide_win, file_prefix, on_off):
+    train_win_start, train_win_end, fcst_win_start, fcst_win_end = \
+        datetime2Str(slide_win[0]), datetime2Str(slide_win[1]), datetime2Str(slide_win[2]), datetime2Str(slide_win[3])
+        
+    file_name = r"%s\..\data\slide_window\%s.%s.%s.%s.%s" % (runningPath, file_prefix, train_win_start, train_win_end, fcst_win_start, fcst_win_end)
+    print("loading ONLINE %s" % file_name)
+
+    online_file = open(file_name, encoding="utf-8", mode='r')
+
     user_behavior = csv.reader(online_file)
 
     index = 0
@@ -65,6 +67,10 @@ def load_ONLINE_data(slide_win):
             continue
 
         user_id = aline[0]
+
+        if (user_id not in g_users_for_algo[on_off]):
+            continue
+
         m_id = aline[1]
         action = int(aline[2])
         c_id = aline[3]
@@ -73,12 +79,9 @@ def load_ONLINE_data(slide_win):
 
         discount_rate = float(aline[4])
         min_charge = int(aline[5])
- 
+
         date_received = transStr2Datetime(aline[6])
         date = transStr2Datetime(aline[7])
-        
-        if (not should_read_data(date_received, date, date_diff, slide_win)):
-            continue
 
         date_diff = aline[8]
         if (len(date_diff) > 0):
@@ -132,17 +135,20 @@ def load_ONLINE_data(slide_win):
         index += 1
         if (index % 10000 == 0):
             print("%d lines read\r" % index, end="")
-            
-    return 0
+
+    
+    return
 
 
 
-def load_OFFLINE_data(slide_win):
-    offline_file = r"%s\..\data\pre_processed_ccf_offline_stage1_train.csv" % (runningPath)
-#     offline_file = r"%s\..\data\pre_processed_online_with_offline_coupon.csv" % (runningPath)
-#     offline_file = r"%s\..\data\part_ccf_offline_stage1_train.csv" % (runningPath)
-    print("%s loading offline data %s" % (getCurrentTime(), offline_file))
-    online_file = open(offline_file, encoding="utf-8", mode='r')
+def load_OFFLINE_data(slide_win, file_prefix, on_off):
+    train_win_start, train_win_end, fcst_win_start, fcst_win_end = \
+        datetime2Str(slide_win[0]), datetime2Str(slide_win[1]), datetime2Str(slide_win[2]), datetime2Str(slide_win[3])
+
+    file_name = r"%s\..\data\slide_window\%s.%s.%s.%s.%s" % (runningPath, file_prefix, train_win_start, train_win_end, fcst_win_start, fcst_win_end)
+    print("loading OFFLINE ", file_name)
+
+    online_file = open(file_name, encoding="utf-8", mode='r')
 
     user_behavior = csv.reader(online_file)
 
@@ -154,6 +160,9 @@ def load_OFFLINE_data(slide_win):
             continue
 
         user_id = aline[0]
+        if (user_id not in g_users_for_algo[on_off]):
+            continue
+
         m_id = aline[1]        
         c_id = aline[2]
         if (len(c_id) == 0):
@@ -162,7 +171,7 @@ def load_OFFLINE_data(slide_win):
         discount_rate = float(aline[3])
         min_charge = int(aline[4])
         distance = int(aline[5])
- 
+
         date_received = transStr2Datetime(aline[6])
         date = transStr2Datetime(aline[7])
 
@@ -171,10 +180,7 @@ def load_OFFLINE_data(slide_win):
             date_diff = int(date_diff)
         else:
             date_diff = None
-
-        if (not should_read_data(date_received, date, date_diff, slide_win)):
-            continue
-
+ 
         opt_tuple = (distance, c_id, discount_rate, min_charge, date_received, date, date_diff)
 
         # user - m_id
@@ -224,11 +230,10 @@ def load_OFFLINE_data(slide_win):
 
     return 0
 
-def load_FORECAST_data():
+def load_FORECAST_data(on_off):
     fcst_file = r"%s\..\data\ccf_offline_stage1_test_revised.csv" % (runningPath)
     print("%s loading FOECAST data %s" % (getCurrentTime(), fcst_file))
     fcst_file_handle = open(fcst_file, encoding="utf-8", mode='r')
-#     online_file = open(r"%s\..\data\part_ccf_offline_stage1_train.csv" % (runningPath), encoding="utf-8", mode='r')
 
     fcst_user_behavior = csv.reader(fcst_file_handle)
 
@@ -260,9 +265,11 @@ def load_FORECAST_data():
 
         date_received = transStr2Datetime(aline[5])  
 
-        if (user_id not in g_users_for_algo[ONLINE] and user_id not in g_users_for_algo[OFFLINE] and 
-            user_id not in g_users_for_algo[BOTH]):
+        if (user_id not in g_users_for_algo[on_off] or user_id not in g_user_merchant_dict):
+            index += 1
             g_fcst_users_without_coupon.add((user_id, c_id, date_received))
+            if (index % 10000 == 0):
+                print("%d lines read\r" % index, end="")
             continue
 
         opt_tuple = (c_id, discount_rate, min_charge, distance, date_received)
@@ -305,7 +312,7 @@ def load_FORECAST_data():
         if (index % 10000 == 0):
             print("%d lines read\r" % index, end="")    
 
-    print("%s After loading forecast, here are %d lines skiped" % (getCurrentTime(), len(g_fcst_users_without_coupon)))
+    print("%s After loading forecast, here are %s %d users loaded" % (getCurrentTime(), getOn_offStr(on_off), len(g_fcst_user_data_dict)))
     return
 
 def get_distount_type(discount_rate):
@@ -339,7 +346,31 @@ def transStr2Datetime(str_date):
     else:
         return None
 
-       
+def datetime2Str(date):
+    return "%d%02d%02d" % (date.year, date.month, date.day)
+ 
+def getOn_offStr(on_off):
+    if (on_off == ONLINE):
+        return "ONLINE"
+    
+    if (on_off == OFFLINE):
+        return "OFFLINE"
+    
+    if (on_off == BOTH):
+        return "BOTH"
+    
+    return "UNKNOWN"
+
+def cleanGlobalVar():
+    g_user_merchant_dict.clear()
+    g_merchant_user_dict.clear()
+    g_coupon_merchant_dict.clear()
+
+    g_fcst_user_data_dict.clear()
+    g_fcst_merchant_data_dict.clear()
+    g_fcst_coupon_merchant_data_dict.clear()
+    return
+
 if __name__ == '__main__':
     load_ONLINE_data(0, 0)
     load_OFFLINE_data(0, 0)    
